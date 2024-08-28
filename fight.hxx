@@ -24,9 +24,12 @@ public:
     
     Player(Universe* universe);
     const char*   name                    ();
+    void          reset                   ();
     PlayerAction* get_action              ();
     int           write_body_vertices     (GLfloat* vertices);
     int           write_power_bar_vertices(GLfloat* vertices);
+    void          take_damage             (int hit_points);
+    void          force_away              (float x, float y);
 };
 
 class Universe {
