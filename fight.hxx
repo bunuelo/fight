@@ -1,21 +1,32 @@
 #ifndef FIGHT__HXX
 #define FIGHT__HXX
 
+class Universe;
 class PlayerAction;
 
 class Player {
 public:
+    Universe* universe;
+    
     int index;
     int joystick_index;
     float x, y;
     float vx, vy;
     float r, g, b;
+    int facing_x;
     bool on_ground;
+    int max_hit_points;
+    int hit_points;
+    bool punch_started;
+    float punch_started_time;
+    bool kick_started;
+    float kick_started_time;
     
-    Player();
-    const char*   name        ();
-    PlayerAction* get_action  ();
-    int           write_vertices(GLfloat* vertices);
+    Player(Universe* universe);
+    const char*   name                    ();
+    PlayerAction* get_action              ();
+    int           write_body_vertices     (GLfloat* vertices);
+    int           write_power_bar_vertices(GLfloat* vertices);
 };
 
 class Universe {
@@ -23,9 +34,11 @@ public:
     
     Player* players[2];
     GLuint program_object;
+    double _now;
     
     bool initialize();
     void destroy();
+    double now();
     bool all_players_present();
     void perform_actions();
     void render(GLFWwindow* window);

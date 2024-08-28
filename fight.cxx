@@ -121,7 +121,8 @@ int PlayerAction::write(std::ostream& os) {
     return index;
 }
 
-Player::Player() {
+Player::Player(Universe* universe) {
+    this->universe = universe;
     this->joystick_index = -1;
     this->x = 0;
     this->y = 0;
@@ -131,6 +132,12 @@ Player::Player() {
     this->g = 1;
     this->b = 1;
     this->on_ground = false;
+    this->max_hit_points = 10;
+    this->hit_points = this->max_hit_points;
+    this->punch_started = false;
+    this->punch_started_time = 0;
+    this->kick_started = false;
+    this->kick_started_time = 0;
 }
 
 const char* Player::name() {
@@ -234,19 +241,91 @@ PlayerAction* Player::get_action() {
     return action;
 }
 
-int Player::write_vertices(GLfloat* vertices) {
-    int vertex_count = 6;
-    GLfloat template_vertices[] = {
+int Player::write_body_vertices(GLfloat* vertices) {
+    int vertex_count = 0;
+    int core_vertex_count = 6;
+    vertex_count += core_vertex_count;
+    GLfloat core_template_vertices[] = {
         0.0f, -0.125f, 0.0f,
-        0.125f,  0.25f, 0.0f,
+        0.05f,  0.25f, 0.0f,
         -0.125f, 0.25f, 0.0f,
         0.0f, 0.125f, 0.0f,
         -0.125f, -0.25f, 0.0f,
-        0.125f, -0.25f, 0.0f,
+        0.05f, -0.25f, 0.0f,
     };
+    int punch_vertex_count = 3;
+    GLfloat punch_template_vertices[] = {
+        0.0f,  0.0f, 0.0f,
+        0.25f, 0.125f, 0.0f,
+        0.15f, 0.25f, 0.0f,
+    };
+    int kick_vertex_count = 3;
+    GLfloat kick_template_vertices[] = {
+        0.0f,  0.0f, 0.0f,
+        0.25f, -0.125f, 0.0f,
+        0.15f, -0.25f, 0.0f,
+    };
+    for (int i = 0; i < core_vertex_count; i ++) {
+        vertices[i * 3 + 0] = core_template_vertices[i * 3 + 0];
+        vertices[i * 3 + 1] = core_template_vertices[i * 3 + 1];
+        vertices[i * 3 + 2] = core_template_vertices[i * 3 + 2];
+    }
+    if (this->punch_started) {
+        vertex_count += punch_vertex_count;
+        for (int i = 0; i < punch_vertex_count; i ++) {
+            vertices[(core_vertex_count + i) * 3 + 0] = punch_template_vertices[i * 3 + 0];
+            vertices[(core_vertex_count + i) * 3 + 1] = punch_template_vertices[i * 3 + 1];
+            vertices[(core_vertex_count + i) * 3 + 2] = punch_template_vertices[i * 3 + 2];
+        }
+    }
+    if (this->kick_started) {
+        vertex_count += kick_vertex_count;
+        for (int i = 0; i < kick_vertex_count; i ++) {
+            vertices[(core_vertex_count + i) * 3 + 0] = kick_template_vertices[i * 3 + 0];
+            vertices[(core_vertex_count + i) * 3 + 1] = kick_template_vertices[i * 3 + 1];
+            vertices[(core_vertex_count + i) * 3 + 2] = kick_template_vertices[i * 3 + 2];
+        }
+    }
+    int triangle_count = vertex_count / 3;
+    for (int i = 0; i < triangle_count; i ++) {
+        if (this->facing_x == -1) {
+            vertices[i * 3 * 3 + 0] = -vertices[i * 3 * 3 + 0];
+            vertices[i * 3 * 3 + 1] =  vertices[i * 3 * 3 + 1];
+            vertices[i * 3 * 3 + 2] =  vertices[i * 3 * 3 + 2];
+            float x = -vertices[i * 3 * 3 + 3];
+            float y =  vertices[i * 3 * 3 + 4];
+            float z =  vertices[i * 3 * 3 + 5];
+            vertices[i * 3 * 3 + 3] = -vertices[i * 3 * 3 + 6];
+            vertices[i * 3 * 3 + 4] =  vertices[i * 3 * 3 + 7];
+            vertices[i * 3 * 3 + 5] =  vertices[i * 3 * 3 + 8];
+            vertices[i * 3 * 3 + 6] = x;
+            vertices[i * 3 * 3 + 7] = y;
+            vertices[i * 3 * 3 + 8] = z;
+        }
+        vertices[i * 3 * 3 + 0] += this->x;
+        vertices[i * 3 * 3 + 1] += this->y;
+        vertices[i * 3 * 3 + 3] += this->x;
+        vertices[i * 3 * 3 + 4] += this->y;
+        vertices[i * 3 * 3 + 6] += this->x;
+        vertices[i * 3 * 3 + 7] += this->y;
+    }
+    return vertex_count;
+}
+
+int Player::write_power_bar_vertices(GLfloat* vertices) {
+    int vertex_count = 6;
+    GLfloat template_vertices[] = {
+        0.0f, 0.0f, 0.0f,
+        0.0f, 1.0f, 0.0f,
+        1.0f, 1.0f, 0.0f,
+        0.0f, 0.0f, 0.0f,
+        1.0f, 1.0f, 0.0f,
+        1.0f, 0.0f, 0.0f,
+    };
+    float power_percent = (float)this->hit_points / (float)this->max_hit_points;
     for (int i = 0; i < vertex_count; i ++) {
-        vertices[i * 3 + 0] = template_vertices[i * 3 + 0] + this->x;
-        vertices[i * 3 + 1] = template_vertices[i * 3 + 1] + this->y;
+        vertices[i * 3 + 0] = power_percent * template_vertices[i * 3 + 0] * 0.5  + 1.3 * this->index - 0.9;
+        vertices[i * 3 + 1] = template_vertices[i * 3 + 1] * 0.125 + 0.75;
         vertices[i * 3 + 2] = template_vertices[i * 3 + 2];
     }
     return vertex_count;
@@ -255,22 +334,24 @@ int Player::write_vertices(GLfloat* vertices) {
 
 bool Universe::initialize() {
     for (int player_index = 0; player_index < 2; player_index ++) {
-        Player* player = new Player();
+        Player* player = new Player(this);
         players[player_index] = player;
         player->index = player_index;
         if (player_index == 0) {
             player->x = -0.5;
+            player->facing_x = 1;
             player->r = 1;
             player->g = 0;
             player->b = 0;
         } else {
             player->x = 0.5;
+            player->facing_x = -1;
             player->r = 0;
             player->g = 0;
             player->b = 1;
         }
     }
-
+    
     GLchar vShaderStr[] =
         "attribute vec4 vPosition;    \n"
         "void main()                  \n"
@@ -331,6 +412,7 @@ bool Universe::initialize() {
         return false;
     }
     this->program_object = programObject;
+    this->_now = 0;
     return true; // success
 }
 
@@ -338,6 +420,10 @@ void Universe::destroy() {
     for (int player_index = 0; player_index < 2; player_index ++) {
         delete players[player_index];
     }
+}
+
+double Universe::now() {
+    return this->_now;
 }
 
 bool Universe::all_players_present() {
@@ -388,6 +474,7 @@ void Universe::perform_actions() {
         player_action->destroy();
         delete player_action;
     }
+    // collisions between players
     for (int player_i = 0; player_i < 2; player_i ++) {
         Player* i_player = players[player_i];
         for (int player_j = 0; player_j < player_i; player_j ++) {
@@ -404,9 +491,18 @@ void Universe::perform_actions() {
                 i_player->vy = -0.025 * ny + 0.025;
                 j_player->vx =  0.025 * nx;
                 j_player->vy =  0.025 * ny + 0.025;
+                i_player->hit_points -= 1;
+                if (i_player->hit_points <= 0) {
+                    i_player->hit_points = i_player->max_hit_points;
+                }
+                j_player->hit_points -= 1;
+                if (j_player->hit_points <= 0) {
+                    j_player->hit_points = j_player->max_hit_points;
+                }
             }
         }
     }
+    // gravity, friction
     for (int player_index = 0; player_index < 2; player_index ++) {
         Player* player = players[player_index];
         player->vy -= 0.002;
@@ -420,7 +516,7 @@ void Universe::perform_actions() {
             }
         }
     }
-    
+    // boundaries, ground detection
     for (int player_index = 0; player_index < 2; player_index ++) {
         Player* player = players[player_index];
         player->x += player->vx;
@@ -445,10 +541,33 @@ void Universe::perform_actions() {
             player->vy = 0;
         }
     }
+    // kick, punch
+    for (int player_index = 0; player_index < 2; player_index ++) {
+        Player* player = players[player_index];
+        if (player->punch_started) {
+            if (player->universe->_now - player->punch_started_time > 0.4) {
+                player->punch_started = false;
+                for (int player_j = 0; player_j < 2; player_j ++) {
+                    if (player_index != player_j) {
+                        Player* other_player = players[player_j];
+                        
+                    }
+                }
+                printf("Punch ended.\n");
+            }
+        }
+        if (player->kick_started) {
+            if (player->universe->_now - player->kick_started_time > 0.8) {
+                player->kick_started = false;
+                printf("Kick ended.\n");
+            }
+        }
+    }
+    this->_now += 1.0 / 60;
 }
 
 void Universe::render(GLFWwindow* window) {
-    GLfloat vertices[6 * 3];
+    GLfloat vertices[3 * 18];
     
     int width, height;
     glfwGetFramebufferSize(window, &width, &height);
@@ -463,11 +582,18 @@ void Universe::render(GLFWwindow* window) {
     
     for (int player_index = 0; player_index < 2; player_index ++) {
         Player* player = this->players[player_index];
-        int vertex_count = player->write_vertices(vertices);
-        // Load the vertex data
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, vertices);
-        glEnableVertexAttribArray(0);
-        glDrawArrays(GL_TRIANGLES, 0, vertex_count);
+        {
+            int vertex_count = player->write_body_vertices(vertices);
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, vertices);
+            glEnableVertexAttribArray(0);
+            glDrawArrays(GL_TRIANGLES, 0, vertex_count);
+        }
+        {
+            int vertex_count = player->write_power_bar_vertices(vertices);
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, vertices);
+            glEnableVertexAttribArray(0);
+            glDrawArrays(GL_TRIANGLES, 0, vertex_count);
+        }
     }
 }
 
@@ -483,6 +609,7 @@ void MoveLeftPlayerAction::perform() {
         if (this->player->vx > -0.015) {
             this->player->vx -= 0.01;
         }
+        this->player->facing_x = -1;
     }
 }
 
@@ -498,6 +625,7 @@ void MoveRightPlayerAction::perform() {
         if (this->player->vx < 0.015) {
             this->player->vx += 0.01;
         }
+        this->player->facing_x = 1;
     }
 }
 
@@ -534,7 +662,12 @@ int KickPlayerAction::write(std::ostream& os) {
 }
 
 void KickPlayerAction::perform() {
-    printf("%s: Kick\n", this->player->name());
+    //printf("%s: Kick\n", this->player->name());
+    if (!this->player->punch_started && !this->player->kick_started) {
+        this->player->kick_started = true;
+        this->player->kick_started_time = this->player->universe->now();
+        printf("Kick started.\n");
+    }
 }
 
 int PunchPlayerAction::write(std::ostream& os) {
@@ -544,7 +677,12 @@ int PunchPlayerAction::write(std::ostream& os) {
 }
 
 void PunchPlayerAction::perform() {
-    printf("%s: Punch\n", this->player->name());
+    //printf("%s: Punch\n", this->player->name());
+    if (!this->player->punch_started && !this->player->kick_started) {
+        this->player->punch_started = true;
+        this->player->punch_started_time = this->player->universe->now();
+        printf("Punch started.\n");
+    }
 }
 
 int main(int argc, char** argv) {
