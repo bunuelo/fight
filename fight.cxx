@@ -124,20 +124,8 @@ int PlayerAction::write(std::ostream& os) {
 Player::Player(Universe* universe) {
     this->universe = universe;
     this->joystick_index = -1;
-    this->x = 0;
-    this->y = 0;
-    this->vx = 0;
-    this->vy = 0;
-    this->r = 1;
-    this->g = 1;
-    this->b = 1;
-    this->on_ground = false;
     this->max_hit_points = 10;
-    this->hit_points = this->max_hit_points;
-    this->punch_started = false;
-    this->punch_started_time = 0;
-    this->kick_started = false;
-    this->kick_started_time = 0;
+    this->reset();
 }
 
 const char* Player::name() {
@@ -151,23 +139,39 @@ const char* Player::name() {
 void Player::reset() {
     this->on_ground = false;
     if (this->index == 0) {
-        this->x = -0.5;
+        this->x = -0.4;
+        this->y = 0;
         this->facing_x = 1;
         this->r = 1;
         this->g = 0;
         this->b = 0;
+        this->body_size = 0.5;
     } else {
-        this->x = 0.5;
+        this->x = 0.4;
+        this->y = 0;
         this->facing_x = -1;
         this->r = 0;
         this->g = 0;
         this->b = 1;
+        this->body_size = 0.5;
     }
+    this->vx = 0;
+    this->vy = 0;
     this->hit_points = this->max_hit_points;
     this->punch_started = false;
     this->punch_started_time = 0;
+    this->punch_landed = false;
     this->kick_started = false;
     this->kick_started_time = 0;
+    this->kick_landed = false;
+    this->block_low_started = false;
+    this->block_low_started_time = 0;
+    this->block_low_landed = false;
+    this->block_high_started = false;
+    this->block_high_started_time = 0;
+    this->block_high_landed = false;
+    this->stun_started = false;
+    this->stun_started_time = 0;
 }
 
 PlayerAction* Player::get_action() {
@@ -190,10 +194,16 @@ PlayerAction* Player::get_action() {
             action->events.push_back(player_action);
         }
         if (state.buttons[GLFW_GAMEPAD_BUTTON_X]) {
-            //printf("%s: X Button Pressed\n", name);
+            //printf("%s: X Button Pressed\n", this->name());
+            PlayerAction* player_action = new BlockHighPlayerAction();
+            player_action->player = this;
+            action->events.push_back(player_action);
         }
         if (state.buttons[GLFW_GAMEPAD_BUTTON_Y]) {
-            //printf("%s: Y Button Pressed\n", name);
+            //printf("%s: Y Button Pressed\n", this->name());
+            PlayerAction* player_action = new BlockLowPlayerAction();
+            player_action->player = this;
+            action->events.push_back(player_action);
         }
         if (state.buttons[GLFW_GAMEPAD_BUTTON_LEFT_BUMPER]) {
             //printf("%s: Left Bumper Button Pressed\n", name);
@@ -268,29 +278,57 @@ int Player::write_body_vertices(GLfloat* vertices) {
     int core_vertex_count = 6;
     vertex_count += core_vertex_count;
     GLfloat core_template_vertices[] = {
-        0.0f, -0.125f, 0.0f,
-        0.05f,  0.25f, 0.0f,
-        -0.125f, 0.25f, 0.0f,
-        0.0f, 0.125f, 0.0f,
-        -0.125f, -0.25f, 0.0f,
-        0.05f, -0.25f, 0.0f,
+         0.0f,                    -0.25f * this->body_size, 0.0f,
+         0.10f * this->body_size,  0.5f * this->body_size,  0.0f,
+        -0.25f * this->body_size,  0.5f * this->body_size,  0.0f,
+         0.0f,                     0.25f * this->body_size, 0.0f,
+        -0.25f * this->body_size, -0.5f * this->body_size,  0.0f,
+         0.10f * this->body_size, -0.5f * this->body_size,  0.0f,
+    };
+    GLfloat stun_core_template_vertices[] = {
+         0.0f,                     0.0f * this->body_size, 0.0f,
+         0.10f * this->body_size,  0.75f * this->body_size,  0.0f,
+        -0.25f * this->body_size,  0.75f * this->body_size,  0.0f,
+         0.0f,                     0.25f * this->body_size, 0.0f,
+        -0.25f * this->body_size, -0.5f * this->body_size,  0.0f,
+         0.10f * this->body_size, -0.5f * this->body_size,  0.0f,
     };
     int punch_vertex_count = 3;
     GLfloat punch_template_vertices[] = {
-        0.0f,  0.0f, 0.0f,
-        0.25f, 0.125f, 0.0f,
-        0.15f, 0.25f, 0.0f,
+        0.0f,                   0.0f,                    0.0f,
+        0.5f * this->body_size, 0.1f * this->body_size, 0.0f,
+        0.35f * this->body_size, 0.3f * this->body_size,  0.0f,
     };
     int kick_vertex_count = 3;
     GLfloat kick_template_vertices[] = {
-        0.0f,  0.0f, 0.0f,
-        0.25f, -0.125f, 0.0f,
-        0.15f, -0.25f, 0.0f,
+        0.0f,                    0.0f,                    0.0f,
+        0.5f * this->body_size,  -0.1f * this->body_size, 0.0f,
+        0.35f * this->body_size, -0.3f * this->body_size,  0.0f,
     };
-    for (int i = 0; i < core_vertex_count; i ++) {
-        vertices[i * 3 + 0] = core_template_vertices[i * 3 + 0];
-        vertices[i * 3 + 1] = core_template_vertices[i * 3 + 1];
-        vertices[i * 3 + 2] = core_template_vertices[i * 3 + 2];
+    int block_low_vertex_count = 3;
+    GLfloat block_low_template_vertices[] = {
+        0.0f,                    0.0f,                    0.0f,
+        0.25f * this->body_size, -0.05f * this->body_size, 0.0f,
+        0.25f * this->body_size, -0.5f * this->body_size,  0.0f,
+    };
+    int block_high_vertex_count = 3;
+    GLfloat block_high_template_vertices[] = {
+        0.0f,                   0.0f,                    0.0f,
+        0.25f * this->body_size, 0.05f * this->body_size, 0.0f,
+        0.25f * this->body_size, 0.5f * this->body_size,  0.0f,
+    };
+    if (this->stun_started) {
+        for (int i = 0; i < core_vertex_count; i ++) {
+            vertices[i * 3 + 0] = stun_core_template_vertices[i * 3 + 0];
+            vertices[i * 3 + 1] = stun_core_template_vertices[i * 3 + 1];
+            vertices[i * 3 + 2] = stun_core_template_vertices[i * 3 + 2];
+        }
+    } else {
+        for (int i = 0; i < core_vertex_count; i ++) {
+            vertices[i * 3 + 0] = core_template_vertices[i * 3 + 0];
+            vertices[i * 3 + 1] = core_template_vertices[i * 3 + 1];
+            vertices[i * 3 + 2] = core_template_vertices[i * 3 + 2];
+        }
     }
     if (this->punch_started) {
         vertex_count += punch_vertex_count;
@@ -299,13 +337,26 @@ int Player::write_body_vertices(GLfloat* vertices) {
             vertices[(core_vertex_count + i) * 3 + 1] = punch_template_vertices[i * 3 + 1];
             vertices[(core_vertex_count + i) * 3 + 2] = punch_template_vertices[i * 3 + 2];
         }
-    }
-    if (this->kick_started) {
+    } else if (this->kick_started) {
         vertex_count += kick_vertex_count;
         for (int i = 0; i < kick_vertex_count; i ++) {
             vertices[(core_vertex_count + i) * 3 + 0] = kick_template_vertices[i * 3 + 0];
             vertices[(core_vertex_count + i) * 3 + 1] = kick_template_vertices[i * 3 + 1];
             vertices[(core_vertex_count + i) * 3 + 2] = kick_template_vertices[i * 3 + 2];
+        }
+    } else if (this->block_low_started) {
+        vertex_count += block_low_vertex_count;
+        for (int i = 0; i < block_low_vertex_count; i ++) {
+            vertices[(core_vertex_count + i) * 3 + 0] = block_low_template_vertices[i * 3 + 0];
+            vertices[(core_vertex_count + i) * 3 + 1] = block_low_template_vertices[i * 3 + 1];
+            vertices[(core_vertex_count + i) * 3 + 2] = block_low_template_vertices[i * 3 + 2];
+        }
+    } else if (this->block_high_started) {
+        vertex_count += block_high_vertex_count;
+        for (int i = 0; i < block_high_vertex_count; i ++) {
+            vertices[(core_vertex_count + i) * 3 + 0] = block_high_template_vertices[i * 3 + 0];
+            vertices[(core_vertex_count + i) * 3 + 1] = block_high_template_vertices[i * 3 + 1];
+            vertices[(core_vertex_count + i) * 3 + 2] = block_high_template_vertices[i * 3 + 2];
         }
     }
     int triangle_count = vertex_count / 3;
@@ -360,16 +411,42 @@ void Player::take_damage(int hit_points) {
     }
 }
 
-void Player::force_away(float x, float y) {
+void Player::force_away(float x, float y, float velocity) {
     float xd = x - this->x;
     float yd = y - this->y;
     xd += 0.1 * (-0.5 + (float)(rand() % RAND_MAX) / (float)RAND_MAX);
     yd += 0.1 * (-0.5 + (float)(rand() % RAND_MAX) / (float)RAND_MAX);
     float len = sqrt(xd * xd + yd * yd);
-    float nx = xd / len;
-    float ny = yd / len;
-    this->vx = -0.025 * nx;
-    this->vy = -0.025 * ny + 0.025;
+    float nx;
+    float ny;
+    if (len == 0) {
+        nx = 0;
+        ny = -1;
+    } else {
+        nx = xd / len;
+        ny = yd / len;
+    }
+    this->vx = -velocity * nx;
+    this->vy = -velocity * ny;
+}
+
+void Player::position_distance(float x, float y, float distance) {
+    float xd = x - this->x;
+    float yd = y - this->y;
+    float len = sqrt(xd * xd + yd * yd);
+    float nx;
+    float ny;
+    if (len == 0) {
+        nx = 0;
+        ny = -1;
+    } else {
+        nx = xd / len;
+        ny = yd / len;
+    }
+    this->x = x - distance * nx;
+    this->y = y - distance * ny;
+    this->vx = 0;
+    this->vy = 0;
 }
 
 bool Universe::initialize() {
@@ -391,7 +468,7 @@ bool Universe::initialize() {
         "precision mediump float;\n"
         "void main()                                  \n"
         "{                                            \n"
-        "  gl_FragColor = vec4 ( 1.0, 0.0, 0.0, 1.0 );\n"
+        "  gl_FragColor = vec4 ( 1.0, 0.25, 0.0, 1.0 );\n"
         "}                                            \n";
     
     GLuint vertexShader;
@@ -503,27 +580,18 @@ void Universe::perform_actions() {
         delete player_action;
     }
     // collisions between players
-    float collision_distance = 0.05;
-    for (int player_i = 0; player_i < 2; player_i ++) {
+    for (int player_i = 1; player_i < 2; player_i ++) {
         Player* i_player = players[player_i];
         for (int player_j = 0; player_j < player_i; player_j ++) {
             Player* j_player = players[player_j];
+            float collision_distance = 0.125 * i_player->body_size + 0.125 * j_player->body_size;
             float xd = j_player->x - i_player->x;
             float yd = j_player->y - i_player->y;
-            xd += 0.1 * (-0.5 + (float)(rand() % RAND_MAX) / (float)RAND_MAX);
-            yd += 0.1 * (-0.5 + (float)(rand() % RAND_MAX) / (float)RAND_MAX);
             if (xd * xd + yd * yd < collision_distance * collision_distance) {
-                float len = sqrt(xd * xd + yd * yd);
-                float nx = xd / len;
-                float ny = yd / len;
-                i_player->vx = -0.025 * nx;
-                i_player->vy = -0.025 * ny + 0.025;
-                j_player->vx =  0.025 * nx;
-                j_player->vy =  0.025 * ny + 0.025;
-                i_player->force_away(j_player->x, j_player->y);
-                j_player->force_away(i_player->x, i_player->y);
-                i_player->take_damage(1);
-                j_player->take_damage(1);
+                i_player->position_distance(j_player->x, j_player->y, 1.01 * collision_distance);
+                j_player->position_distance(i_player->x, i_player->y, 1.02 * collision_distance);
+                //i_player->take_damage(1);
+                //j_player->take_damage(1);
             }
         }
     }
@@ -532,10 +600,10 @@ void Universe::perform_actions() {
         Player* player = players[player_index];
         player->vy -= 0.002;
         if (player->on_ground) {
-            if (player->vx > 0.001) {
-                player->vx -= 0.001;
-            } else if (player->vx < -0.001) {
-                player->vx += 0.001;
+            if (player->vx > 0.002 * player->body_size) {
+                player->vx -= 0.002 * player->body_size;
+            } else if (player->vx < -0.002 * player->body_size) {
+                player->vx += 0.002 * player->body_size;
             } else {
                 player->vx = 0;
             }
@@ -546,23 +614,23 @@ void Universe::perform_actions() {
         Player* player = players[player_index];
         player->x += player->vx;
         player->y += player->vy;
-        if (player->x < -0.75) {
-            player->x = -0.75;
+        if (player->x < -1.0 + 0.5 * player->body_size) {
+            player->x = -1.0 + 0.5 * player->body_size;
             player->vx = 0;
         }
-        if (player->x > 0.75) {
-            player->x = 0.75;
+        if (player->x > 1.0 - 0.5 * player->body_size) {
+            player->x = 1.0 - 0.5 * player->body_size;
             player->vx = 0;
         }
-        if (player->y < -0.75) {
-            player->y = -0.75;
+        if (player->y < -1.0 + 0.5 * player->body_size) {
+            player->y = -1.0 + 0.5 * player->body_size;
             player->vy = 0;
             player->on_ground = true;
         } else {
             player->on_ground = false;
         }
-        if (player->y > 0.75) {
-            player->y = 0.75;
+        if (player->y > 1.0 - 0.5 * player->body_size) {
+            player->y = 1.0 - 0.5 * player->body_size;
             player->vy = 0;
         }
     }
@@ -570,43 +638,91 @@ void Universe::perform_actions() {
     for (int player_index = 0; player_index < 2; player_index ++) {
         Player* player = players[player_index];
         if (player->punch_started) {
-            if (player->universe->_now - player->punch_started_time > 0.4) {
-                player->punch_started = false;
-                printf("Punch ended.\n");
+            if (! player->punch_landed) {
                 for (int player_j = 0; player_j < 2; player_j ++) {
                     if (player_index != player_j) {
                         Player* other_player = players[player_j];
-                        float player_hand_x = player->x + (player->facing_x * 0.125);
-                        float player_hand_y = player->y + 0.05;
+                        float player_hand_x = player->x + (player->facing_x * 0.05 * player->body_size);
+                        float player_hand_y = player->y + 0.1 * player->body_size;
                         float dx = other_player->x - player_hand_x;
                         float dy = other_player->y - player_hand_y;
-                        float punch_distance = 0.2;
+                        float punch_distance = 0.5 * player->body_size + 0.5 * other_player->body_size;
                         if (dx * dx + dy * dy < punch_distance * punch_distance) {
-                            other_player->force_away(player_hand_x, player_hand_y);
-                            other_player->take_damage(1);
+                            player->punch_landed = true;
+                            if (! other_player->stun_started) {
+                                if (player->on_ground) {
+                                    other_player->force_away(player_hand_x, player_hand_y, 0.06 * player->body_size);
+                                    other_player->vy += 0.12 * player->body_size;
+                                    other_player->take_damage(1);
+                                } else {
+                                    other_player->force_away(player_hand_x, player_hand_y, 0.06 * player->body_size);
+                                    other_player->vy += 0.12 * player->body_size;
+                                    other_player->take_damage(3);
+                                }
+                                printf("Stun started.\n");
+                                other_player->stun_started = true;
+                                other_player->stun_started_time = this->_now;
+                            }
                         }
                     }
                 }
             }
+            if (this->_now - player->punch_started_time > 0.4) {
+                player->punch_started = false;
+                printf("Punch ended.\n");
+            }
         }
         if (player->kick_started) {
-            if (player->universe->_now - player->kick_started_time > 0.8) {
-                player->kick_started = false;
-                printf("Kick ended.\n");
+            if (! player->kick_landed) {
                 for (int player_j = 0; player_j < 2; player_j ++) {
                     if (player_index != player_j) {
                         Player* other_player = players[player_j];
-                        float player_foot_x = player->x + (player->facing_x * 0.125);
-                        float player_foot_y = player->y - 0.05;
+                        float player_foot_x = player->x + (player->facing_x * 0.025 * player->body_size);
+                        float player_foot_y = player->y - 0.05 * player->body_size;
                         float dx = other_player->x - player_foot_x;
                         float dy = other_player->y - player_foot_y;
-                        float kick_distance = 0.2;
+                        float kick_distance = 0.5 * player->body_size + 0.5 * other_player->body_size;
                         if (dx * dx + dy * dy < kick_distance * kick_distance) {
-                            other_player->force_away(player_foot_x, player_foot_y);
-                            other_player->take_damage(3);
+                            player->kick_landed = true;
+                            if (! other_player->stun_started) {
+                                if (player->on_ground) {
+                                    other_player->force_away(player_foot_x, player_foot_y, 0.06 * player->body_size);
+                                    other_player->vy += 0.06;
+                                    other_player->take_damage(4);
+                                } else {
+                                    other_player->force_away(player_foot_x, player_foot_y, 0.06 * player->body_size);
+                                    other_player->vy += 0.06;
+                                    other_player->take_damage(8);
+                                }
+                                printf("Stun started.\n");
+                                other_player->stun_started = true;
+                                other_player->stun_started_time = this->_now;
+                            }
                         }
                     }
                 }
+            }
+            if (player->universe->_now - player->kick_started_time > 0.8) {
+                player->kick_started = false;
+                printf("Kick ended.\n");
+            }
+        }
+        if (player->block_low_started) {
+            if (player->universe->_now - player->block_low_started_time > 0.8) {
+                player->block_low_started = false;
+                printf("BlockLow ended.\n");
+            }
+        }
+        if (player->block_high_started) {
+            if (player->universe->_now - player->block_high_started_time > 0.8) {
+                player->block_high_started = false;
+                printf("BlockHigh ended.\n");
+            }
+        }
+        if (player->stun_started) {
+            if (player->universe->_now - player->stun_started_time > 1.6) {
+                player->stun_started = false;
+                printf("Stun ended.\n");
             }
         }
     }
@@ -667,9 +783,9 @@ int MoveLeftPlayerAction::write(std::ostream& os) {
 
 void MoveLeftPlayerAction::perform() {
     //printf("%s: Move Left\n", this->player->name());
-    if (this->player->on_ground) {
-        if (this->player->vx > -0.015) {
-            this->player->vx -= 0.005;
+    if (this->player->on_ground && !this->player->punch_started && !this->player->kick_started && !this->player->stun_started) {
+        if (this->player->vx > -0.03 * this->player->body_size) {
+            this->player->vx -= 0.01 * this->player->body_size;
         }
         this->player->facing_x = -1;
     }
@@ -683,9 +799,9 @@ int MoveRightPlayerAction::write(std::ostream& os) {
 
 void MoveRightPlayerAction::perform() {
     //printf("%s: Move Right\n", this->player->name());
-    if (this->player->on_ground) {
-        if (this->player->vx < 0.015) {
-            this->player->vx += 0.005;
+    if (this->player->on_ground && !this->player->punch_started && !this->player->kick_started && !this->player->stun_started) {
+        if (this->player->vx < 0.03 * this->player->body_size) {
+            this->player->vx += 0.01 * this->player->body_size;
         }
         this->player->facing_x = 1;
     }
@@ -699,8 +815,27 @@ int JumpPlayerAction::write(std::ostream& os) {
     
 void JumpPlayerAction::perform() {
     //printf("%s: Jump\n", this->player->name());
-    if (this->player->on_ground) {
-        this->player->vy = 0.06;
+    if (this->player->on_ground && !this->player->stun_started) {
+        bool action_beyond_warmup = false;
+        float warmup_period = 10.0 / 60;
+        if (this->player->punch_started) {
+            if (this->player->universe->_now - this->player->punch_started_time > warmup_period) {
+                action_beyond_warmup = true;
+            }
+        }
+        if (this->player->kick_started) {
+            if (this->player->universe->_now - this->player->kick_started_time > warmup_period) {
+                action_beyond_warmup = true;
+            }
+        }
+        if (! action_beyond_warmup) {
+            this->player->vy = 0.07;
+            if (this->player->vx < 0) {
+                this->player->vx = -0.125 * this->player->vy;
+            } else if (this->player->vx > 0) {
+                this->player->vx = 0.125 * this->player->vy;
+            }
+        }
     }
 }
 
@@ -725,9 +860,13 @@ int KickPlayerAction::write(std::ostream& os) {
 
 void KickPlayerAction::perform() {
     //printf("%s: Kick\n", this->player->name());
-    if (!this->player->punch_started && !this->player->kick_started) {
+    if (!this->player->punch_started && !this->player->kick_started && !this->player->stun_started) {
         this->player->kick_started = true;
         this->player->kick_started_time = this->player->universe->now();
+        this->player->kick_landed = false;
+        if (this->player->on_ground) {
+            this->player->vx = 0;
+        }
         printf("Kick started.\n");
     }
 }
@@ -740,10 +879,52 @@ int PunchPlayerAction::write(std::ostream& os) {
 
 void PunchPlayerAction::perform() {
     //printf("%s: Punch\n", this->player->name());
-    if (!this->player->punch_started && !this->player->kick_started) {
+    if (!this->player->punch_started && !this->player->kick_started && !this->player->stun_started) {
         this->player->punch_started = true;
         this->player->punch_started_time = this->player->universe->now();
+        this->player->punch_landed = false;
+        if (this->player->on_ground) {
+            this->player->vx = 0;
+        }
         printf("Punch started.\n");
+    }
+}
+
+int BlockLowPlayerAction::write(std::ostream& os) {
+    int index = 0;
+    index += stream_write(os, "{type: BlockLowPlayerAction}");
+    return index;
+}
+
+void BlockLowPlayerAction::perform() {
+    //printf("%s: BlockLow\n", this->player->name());
+    if (!this->player->punch_started && !this->player->block_low_started && !this->player->stun_started) {
+        this->player->block_low_started = true;
+        this->player->block_low_started_time = this->player->universe->now();
+        this->player->block_low_landed = false;
+        if (this->player->on_ground) {
+            this->player->vx = 0;
+        }
+        printf("BlockLow started.\n");
+    }
+}
+
+int BlockHighPlayerAction::write(std::ostream& os) {
+    int index = 0;
+    index += stream_write(os, "{type: BlockHighPlayerAction}");
+    return index;
+}
+
+void BlockHighPlayerAction::perform() {
+    //printf("%s: BlockHigh\n", this->player->name());
+    if (!this->player->punch_started && !this->player->block_high_started && !this->player->stun_started) {
+        this->player->block_high_started = true;
+        this->player->block_high_started_time = this->player->universe->now();
+        this->player->block_high_landed = false;
+        if (this->player->on_ground) {
+            this->player->vx = 0;
+        }
+        printf("BlockHigh started.\n");
     }
 }
 
